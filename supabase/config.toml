@@ -424,3 +424,8 @@ enabled = true
 # Public health check used by the website to show which environment it is connected to.
 [functions.health]
 verify_jwt = false
+
+# Receives programmes and alumni from the Apps Script. It checks its own shared secret
+# (the x-sync-secret header), so Supabase's login-token check is switched off.
+[functions.sync]
+verify_jwt = false
