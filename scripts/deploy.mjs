@@ -22,10 +22,10 @@ if (!ref) {
 }
 
 if (target === "live") {
+  // The warning goes on its own line: a multi-line prompt gets redrawn twice in narrow terminals.
+  console.log(`This deploys to the LIVE project (${ref}) that students use.`);
   const prompt = createInterface({ input: process.stdin, output: process.stdout });
-  const answer = await prompt.question(
-    `This deploys to the LIVE project (${ref}) that students use.\nHas this change been tried on test first? Type "live" to continue: `,
-  );
+  const answer = await prompt.question(`Has this change been tried on test first? Type "live" to continue: `);
   prompt.close();
   if (answer.trim() !== "live") fail("Stopped. Nothing was deployed.");
 }
