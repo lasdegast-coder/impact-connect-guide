@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.DS_Store
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Supabase CLI working files
+supabase/.temp/
+supabase/.branches/
+
+# Private research notes (Jack & Jill testing) stay out of the repository
+research/
