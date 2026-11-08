@@ -15,6 +15,7 @@ A chat guide that helps university students discover which sustainability direct
 | Database tests | `supabase/tests/database/` | Checks the security rules (pgTAP) |
 | Server functions | `supabase/functions/` | The only place with API keys: Claude, Exa, the data sync |
 | Deploy script | `scripts/deploy.mjs` | Puts migrations and functions on the test or live project |
+| Data sync | `apps-script/`, runs in Impact Connect's Google account | Sends programmes, catalogue tags and alumni who gave permission from Google Sheets to the database every hour. Install guide: [apps-script/README.md](apps-script/README.md) |
 
 There are two Supabase projects: **test**, where everything is tried first, and **live**, which only students use. Their refs are in `supabase/projects.json`.
 
@@ -28,7 +29,7 @@ Run these in the project folder.
 | `npm run dev` | Runs the website on your Mac at http://localhost:5173, connected to the test project |
 | `npm test` | Runs the website tests |
 | `npm run typecheck` | Checks the website code for type errors |
-| `npm run test:functions` | Runs the server function tests |
+| `npm run test:functions` | Runs the server function and Apps Script tests |
 | `npm run deploy:test` | Deploys database changes and server functions to **test** |
 | `npm run deploy:live` | Deploys them to **live** (asks for confirmation) |
 | `npm run db:new <name>` | Creates a new, empty migration file |
@@ -42,5 +43,5 @@ For `npm run dev`, copy `.env.example` to `.env.local` and fill in the test proj
 Every push runs three sets of tests on GitHub (see the Actions tab):
 
 - **Website:** type check, unit tests and a build.
-- **Server functions:** type check and Deno tests.
+- **Server functions:** type check and Deno tests, including the Apps Script tests.
 - **Database:** applies all migrations to a fresh database and runs the security tests. This needs Docker, so it runs on GitHub rather than on your Mac.

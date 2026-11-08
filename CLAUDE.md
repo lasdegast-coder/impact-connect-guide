@@ -10,7 +10,7 @@ The person maintaining this is not a professional developer. Explain changes pla
 - `supabase/migrations/`: the database schema. `supabase/tests/database/`: pgTAP tests, run in GitHub Actions (they need Docker; the maintainer's Mac has none).
 - `supabase/functions/`: Edge Functions (Deno + TypeScript). Keep request handling in a `handler.ts` that tests can call directly, with `index.ts` only wiring it to `Deno.serve`. Shared code goes in `supabase/functions/_shared/`.
 - Two Supabase projects, test and live, with refs in `supabase/projects.json`. `scripts/deploy.mjs` deploys migrations, functions and the `APP_ENV` secret to one of them.
-- Google Sheets stay the source of truth for programmes, catalogue tags and alumni. An Apps Script in Impact Connect's Google account pushes only allowed columns to the app.
+- Google Sheets stay the source of truth for programmes, catalogue tags and alumni. An Apps Script in Impact Connect's Google account pushes only allowed columns to the app: `apps-script/Code.js`, pasted in by hand (`apps-script/README.md`), tested by `apps-script/code_test.ts`. It posts to the `sync` function, which checks every value (`supabase/functions/sync/validate.ts`) and saves through `public.apply_sync()`.
 
 ## Rules
 
