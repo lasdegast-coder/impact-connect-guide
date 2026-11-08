@@ -1,7 +1,10 @@
 name: Tests
 
+# Runs once per change: on every pull request, and again after it is merged into main.
+# (Running on every push as well would test each pull request twice.)
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:

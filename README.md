@@ -39,7 +39,7 @@ For `npm run dev`, copy `.env.example` to `.env.local` and fill in the test proj
 
 ## Tests
 
-Every push runs three sets of tests on GitHub (see the Actions tab):
+Every pull request runs three sets of tests on GitHub (see the Actions tab), and they run once more after it is merged into `main`:
 
 - **Website:** type check, unit tests and a build.
 - **Server functions:** type check and Deno tests.
