@@ -122,12 +122,14 @@ Supabase (EU region; a test project and a live project)
 Rough total: **100-150 hours of work**, most of it in phases 2 and 3 (conversation quality and testing). Some steps also depend on others: data fixes by the team, recruiting test students. A phase is finished when its checks pass.
 
 ### Phase 0: Foundations
-- [ ] **You:** create the accounts: Anthropic API (with a monthly spending limit), two Supabase projects (test and live, EU region), a GitHub repository. I'll write a step-by-step guide.
+- [x] **You:** create the accounts: Anthropic API (with a monthly spending limit), two Supabase projects (test and live, EU region), a GitHub repository. I'll write a step-by-step guide.
 - [x] **Me:** repository structure, README and `CLAUDE.md`, first database migration with security tests, deploy script, GitHub workflows for tests and website deploy, website skeleton with a health check. Supabase and Deno tools are part of the project; nothing extra to install on your Mac.
-- [ ] First push to GitHub; all three test sets pass there (the database tests can only run on GitHub).
-- [ ] First deploy to test and live; the website on GitHub Pages shows "Connected to the live environment".
+- [x] First push to GitHub; all three test sets pass there (the database tests can only run on GitHub).
+- [x] First deploy to test and live; the website on GitHub Pages shows "Connected to the live environment".
 
 **Done when:** an empty app deploys to test and live with one command each, the tests run on every push, and no secret is in the repository.
+
+**Status:** done on 8 November 2026. The website is at https://lasdegast-coder.github.io/impact-connect-guide/. The security rules were also checked on both real databases.
 
 ### Phase 1: Data
 - [ ] Team fixes the most important rows flagged in the catalogue's "Data to check" column, and checks the auto-filled values (summer school costs, volunteering languages and locations).
