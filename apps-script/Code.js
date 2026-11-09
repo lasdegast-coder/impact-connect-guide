@@ -48,7 +48,7 @@ const ENVIRONMENTS = [
 ];
 
 // The only columns this script reads. Headers are matched ignoring capitals and extra spaces.
-// "raw" columns are read as values (dates) instead of the text shown in the sheet.
+// "raw" columns are read as values (a date and time) instead of the text shown in the sheet.
 const CATALOGUE_COLUMNS = {
   id: { header: 'ID', required: true },
   name: { header: 'Programme name', required: true },
@@ -65,7 +65,8 @@ const CATALOGUE_COLUMNS = {
   language: { header: 'Language', required: true },
   location: { header: 'Location', required: true },
   deadlineStatus: { header: 'Deadline status', required: true },
-  nextDeadline: { header: 'Next deadline', required: true, raw: true },
+  // Read exactly as shown (2026-11-16). Reading the date value would shift it by the time zone.
+  nextDeadline: { header: 'Next deadline', required: true },
   goodFitFor: { header: 'Good fit for', required: true },
 };
 
@@ -161,7 +162,6 @@ function readSheets_() {
   return {
     programmeTabs: programmeTabs,
     catalogue: readColumns_(catalogueFile, CATALOGUE_TAB, CATALOGUE_COLUMNS),
-    catalogueTimeZone: catalogueFile.getSpreadsheetTimeZone(),
     alumni: readColumns_(alumniFile, ALUMNI_TAB, ALUMNI_COLUMNS),
   };
 }
@@ -211,7 +211,7 @@ function readColumns_(file, tabName, columns) {
 // Joins programmes with their catalogue tags and picks the alumni to send.
 // Returns what to send, the problems found here, and counts for the report.
 function collectData_(sheets) {
-  const programmes = joinProgrammes_(sheets.programmeTabs, sheets.catalogue, sheets.catalogueTimeZone);
+  const programmes = joinProgrammes_(sheets.programmeTabs, sheets.catalogue);
   const alumni = selectAlumni_(sheets.alumni);
   return {
     payload: { programmes: programmes.records, alumni: alumni.records },
@@ -227,7 +227,7 @@ function collectData_(sheets) {
 
 // Each catalogue row is matched with the row of the same name in its source tab
 // (ignoring capitals and extra spaces). Only matched programmes are sent.
-function joinProgrammes_(programmeTabs, catalogueRows, timeZone) {
+function joinProgrammes_(programmeTabs, catalogueRows) {
   const problems = [];
   const sourceIndex = {};
   let sourceRows = 0;
@@ -286,7 +286,7 @@ function joinProgrammes_(programmeTabs, catalogueRows, timeZone) {
         ' point to the same programme.'));
       return;
     }
-    records.push(programmeRecord_(match.catalogue, match.source, match.tab, timeZone));
+    records.push(programmeRecord_(match.catalogue, match.source, match.tab));
   });
 
   PROGRAMME_TABS.forEach((tab) => {
@@ -304,7 +304,7 @@ function joinProgrammes_(programmeTabs, catalogueRows, timeZone) {
 }
 
 // What is sent for one programme: tags from the catalogue, details from the Programmes Database.
-function programmeRecord_(catalogue, source, tab, timeZone) {
+function programmeRecord_(catalogue, source, tab) {
   return {
     catalogueRow: catalogue.rowNumber,
     sourceRow: source.rowNumber,
@@ -322,7 +322,7 @@ function programmeRecord_(catalogue, source, tab, timeZone) {
     language: text_(catalogue.language),
     location: text_(catalogue.location),
     deadlineStatus: text_(catalogue.deadlineStatus),
-    nextDeadline: dateText_(catalogue.nextDeadline, timeZone),
+    nextDeadline: text_(catalogue.nextDeadline),
     goodFitFor: text_(catalogue.goodFitFor),
     name: text_(source.name),
     description: text_(source.description),
@@ -523,11 +523,6 @@ function text_(value) {
 
 function normalise_(value) {
   return String(value).replace(/\s+/g, ' ').trim().toLowerCase();
-}
-
-function dateText_(value, timeZone) {
-  if (value instanceof Date) return Utilities.formatDate(value, timeZone, 'yyyy-MM-dd');
-  return text_(value);
 }
 
 function isEmptyRow_(row) {

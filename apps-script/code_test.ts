@@ -8,7 +8,11 @@ const SECRET = "a-test-secret-that-is-long-enough-1234567890";
 const TEST_URL = "https://pamkxxyinunskokuquzv.supabase.co/functions/v1/sync";
 const LIVE_URL = "https://utmgdneedxrohyvqhdzy.supabase.co/functions/v1/sync";
 
-type Cell = string | Date;
+// A cell is its text, a date value, or a value that the sheet shows as different text.
+type Shown = { value: Date; shown: string };
+type Cell = string | Date | Shown;
+
+const isShown = (cell: Cell): cell is Shown => typeof cell === "object" && "shown" in cell;
 
 // ---- Made-up sheets ----------------------------------------------------------------------
 
@@ -89,8 +93,9 @@ function makeSheets() {
       CATALOGUE_HEADERS,
       catalogueRow("IDP-01", "test   externship", "Impact Driven Programmes"),
       catalogueRow("SUM-01", "Test Summer School", "Summer School Programmes", {
-        // A date cell: midnight in Amsterdam is still the previous day in UTC.
-        "Next deadline": new Date("2027-03-11T23:00:00Z"),
+        // A date cell. The sheet shows 2027-03-12, but its value is midnight in Amsterdam,
+        // which is still the previous day in UTC: only the shown text is reliable.
+        "Next deadline": { value: new Date("2027-03-11T23:00:00Z"), shown: "2027-03-12" },
         "Deadline status": "Open",
       }),
       catalogueRow("IDP-02", "Nationale Test Training", "Impact Driven Programmes"),
@@ -142,8 +147,9 @@ class FakeSheet {
     }
     if (row > 1) for (let c = 0; c < columns; c++) this.dataColumnsRead.push(column + c);
     return {
-      getValues: () => cells,
-      getDisplayValues: () => cells.map((line) => line.map((cell) => (cell instanceof Date ? cell.toString() : String(cell)))),
+      getValues: () => cells.map((line) => line.map((cell) => (isShown(cell) ? cell.value : cell))),
+      getDisplayValues: () =>
+        cells.map((line) => line.map((cell) => (isShown(cell) ? cell.shown : cell instanceof Date ? cell.toString() : String(cell)))),
     };
   }
 }
@@ -154,7 +160,6 @@ function fakeFile(name: string, tabs: Record<string, Cell[][]>) {
     sheets,
     getName: () => name,
     getSheetByName: (tab: string) => sheets[tab] ?? null,
-    getSpreadsheetTimeZone: () => "Europe/Amsterdam",
   };
 }
 
@@ -281,7 +286,7 @@ Deno.test("programmes are joined with their catalogue tags on tab and name", () 
     costsDetails: "Not paid",
     host: "",
   });
-  // The summer school's own column names, and a date cell read in the sheet's time zone.
+  // The summer school's own column names, and a date sent exactly as the sheet shows it.
   assertEquals(programmes[1].host, "Test University");
   assertEquals(programmes[1].signUp, "Applications open in winter");
   assertEquals(programmes[1].nextDeadline, "2027-03-12");

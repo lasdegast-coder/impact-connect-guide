@@ -193,6 +193,13 @@ Deno.test("an alumnus with permission becomes a database row, without tracking p
   }]);
 });
 
+Deno.test("a dash means empty, also for LinkedIn", () => {
+  const result = check([programme()], [alumnus({ linkedin: "-", master: "–" })]);
+  assertEquals(result.problems, []);
+  assertEquals(result.alumni[0].linkedin_url, null);
+  assertEquals(result.alumni[0].master, null);
+});
+
 Deno.test("a LinkedIn link without https:// is completed; anything else is refused", () => {
   const ok = check([programme()], [alumnus({ linkedin: "nl.linkedin.com/in/test" })]);
   assertEquals(ok.alumni[0].linkedin_url, "https://nl.linkedin.com/in/test");

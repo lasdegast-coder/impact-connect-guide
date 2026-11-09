@@ -335,9 +335,9 @@ function checkAlumnus(record: Record<string, unknown>): Checked<AlumnusRow> {
   const report = (key: AlumnusKey, message: string) =>
     problems.push({ where, column: ALUMNI_COLUMNS[key], message });
 
-  // Personal text: dashes count as empty, contact details are refused, values are never quoted.
+  // Personal text: contact details are refused and values are never quoted.
   const personal = (key: AlumnusKey, maxLength: number): string | null => {
-    const value = text(record[key]).replace(/^[-–—]+$/, "");
+    const value = withoutDash(text(record[key]));
     if (value.length > maxLength) report(key, `is longer than ${maxLength} characters.`);
     if (hasContactDetails(value)) {
       report(key, "looks like it contains an email address or phone number. Remove it from the sheet.");
@@ -356,7 +356,7 @@ function checkAlumnus(record: Record<string, unknown>): Checked<AlumnusRow> {
   const fullName = personal("fullName", 200);
   if (!fullName) report("fullName", "is empty.");
 
-  const linkedin = text(record.linkedin);
+  const linkedin = withoutDash(text(record.linkedin));
   let linkedinUrl: string | null = null;
   if (linkedin) {
     linkedinUrl = normaliseLinkedIn(linkedin);
@@ -426,6 +426,11 @@ function checkShape(
 
 function text(value: unknown): string {
   return typeof value === "string" ? value.replace(/\r\n?/g, "\n").trim() : "";
+}
+
+// A cell with only a dash means "nothing to fill in".
+function withoutDash(value: string): string {
+  return /^[-–—]+$/.test(value) ? "" : value;
 }
 
 function normalise(value: string): string {
