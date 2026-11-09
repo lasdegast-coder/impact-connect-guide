@@ -1,10 +1,13 @@
 // Checks every value the Apps Script sends, before anything is saved.
 //
-// Two kinds of problems:
+// Three kinds of findings:
 // - A problem with the request as a whole (wrong shape, an unknown or forbidden column):
 //   checkSyncRequest throws a RequestError and nothing is saved.
 // - A problem with one value: that row is left out until the sheet is fixed, and the problem
 //   goes into the report. The other rows are saved.
+// - A note: a value that is wrong but not needed to recommend the row (an alumnus' LinkedIn
+//   link; students reach alumni through Impact Connect). The value is left empty, the row is
+//   saved, and the note goes into the report.
 //
 // Reports name the sheet, row and column. They quote the wrong value for programmes (public
 // information), but never for alumni.
@@ -75,7 +78,8 @@ export type CheckedSync = {
   received: { programmes: number; alumni: number };
   programmes: ProgrammeRow[];
   alumni: AlumnusRow[];
-  problems: Problem[];
+  problems: Problem[]; // these rows are left out
+  notes: Problem[]; // these rows are saved, but something is worth fixing
 };
 
 export class RequestError extends Error {}
@@ -178,6 +182,7 @@ export function checkSyncRequest(body: unknown): CheckedSync {
   alumni.forEach((record, index) => checkShape(record, index, "alumnus", ALUMNI_COLUMNS));
 
   const problems: Problem[] = [];
+  const notes: Problem[] = [];
   const checkedProgrammes = leaveOutDuplicates(
     programmes.map((record) => checkProgramme(record as Record<string, unknown>)),
     (row) => row.id,
@@ -193,11 +198,13 @@ export function checkSyncRequest(body: unknown): CheckedSync {
 
   const savedProgrammes: ProgrammeRow[] = [];
   for (const checked of checkedProgrammes) {
+    notes.push(...checked.notes);
     if (checked.problems.length > 0) problems.push(...checked.problems);
     else savedProgrammes.push(checked.row);
   }
   const savedAlumni: AlumnusRow[] = [];
   for (const checked of checkedAlumni) {
+    notes.push(...checked.notes);
     if (checked.problems.length > 0) problems.push(...checked.problems);
     else savedAlumni.push(checked.row);
   }
@@ -207,10 +214,11 @@ export function checkSyncRequest(body: unknown): CheckedSync {
     programmes: savedProgrammes,
     alumni: savedAlumni,
     problems,
+    notes,
   };
 }
 
-type Checked<Row> = { row: Row; problems: Problem[]; where: string };
+type Checked<Row> = { row: Row; problems: Problem[]; notes: Problem[]; where: string };
 
 function checkProgramme(record: Record<string, unknown>): Checked<ProgrammeRow> {
   const id = text(record.id);
@@ -326,12 +334,13 @@ function checkProgramme(record: Record<string, unknown>): Checked<ProgrammeRow> 
     next_deadline: nextDeadline || null,
     good_fit_for: required("goodFitFor", 1000),
   };
-  return { row, problems, where: catalogue };
+  return { row, problems, notes: [], where: catalogue };
 }
 
 function checkAlumnus(record: Record<string, unknown>): Checked<AlumnusRow> {
   const where = `Alumni row ${record.row}`;
   const problems: Problem[] = [];
+  const notes: Problem[] = [];
   const report = (key: AlumnusKey, message: string) =>
     problems.push({ where, column: ALUMNI_COLUMNS[key], message });
 
@@ -356,11 +365,16 @@ function checkAlumnus(record: Record<string, unknown>): Checked<AlumnusRow> {
   const fullName = personal("fullName", 200);
   if (!fullName) report("fullName", "is empty.");
 
+  // Students reach alumni through Impact Connect, so a wrong LinkedIn cell is only a note: the
+  // link is left out and the alumnus is still saved.
   const linkedin = withoutDash(text(record.linkedin));
-  let linkedinUrl: string | null = null;
-  if (linkedin) {
-    linkedinUrl = normaliseLinkedIn(linkedin);
-    if (!linkedinUrl) report("linkedin", "is not a link to a LinkedIn profile.");
+  const linkedinUrl = linkedin ? normaliseLinkedIn(linkedin) : null;
+  if (linkedin && !linkedinUrl) {
+    notes.push({
+      where,
+      column: ALUMNI_COLUMNS.linkedin,
+      message: "is not a link to a LinkedIn profile, so the link is left out.",
+    });
   }
 
   const row: AlumnusRow = {
@@ -374,7 +388,7 @@ function checkAlumnus(record: Record<string, unknown>): Checked<AlumnusRow> {
     fields_of_interest: personal("fieldsOfInterest", 2000),
     linkedin_url: linkedinUrl,
   };
-  return { row, problems, where };
+  return { row, problems, notes, where };
 }
 
 // Leaves out every row whose key (ID or form timestamp) appears more than once.

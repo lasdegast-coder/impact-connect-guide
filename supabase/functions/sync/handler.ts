@@ -77,6 +77,7 @@ export async function handleSync(request: Request, deps: SyncDependencies): Prom
       received: checked.received,
       leftOut,
       problems: checked.problems,
+      notes: checked.notes,
     });
   }
 
@@ -84,7 +85,7 @@ export async function handleSync(request: Request, deps: SyncDependencies): Prom
   console.log(
     `sync (${environment}): saved ${saved.programmes} programmes and ${saved.alumni} alumni; ` +
       `left out ${leftOut.programmes} programmes and ${leftOut.alumni} alumni; ` +
-      `${checked.problems.length} problems`,
+      `${checked.problems.length} problems, ${checked.notes.length} notes`,
   );
   return reply(200, {
     ok: true,
@@ -93,6 +94,7 @@ export async function handleSync(request: Request, deps: SyncDependencies): Prom
     saved,
     leftOut,
     problems: checked.problems,
+    notes: checked.notes,
   });
 }
 
