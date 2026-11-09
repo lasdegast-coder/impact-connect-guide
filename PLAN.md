@@ -133,11 +133,17 @@ Rough total: **100-150 hours of work**, most of it in phases 2 and 3 (conversati
 
 ### Phase 1: Data
 - [ ] Team fixes the most important rows flagged in the catalogue's "Data to check" column, and checks the auto-filled values (summer school costs, volunteering languages and locations).
-- [ ] Apps Script sync that sends only allowed columns, and a receiving function that checks every value and reports problems.
-- [ ] Tests for the sync, consent filtering and the absence of contact data.
+- [x] Apps Script sync that sends only allowed columns, and a receiving function that checks every value and reports problems.
+- [x] Tests for the sync, consent filtering and the absence of contact data.
 - [ ] Extend the "add programme to database" skill so it also adds the tag row to the catalogue sheet.
 
 **Done when:** all programmes and consenting alumni arrive correctly in the test project, the sync report shows no errors, and the tests pass.
+
+**Status on 9 November 2026:** the sync runs on the test project, and the tests pass on GitHub.
+- **Alumni:** all 61 alumni with permission arrive. No phone number or email address does, in any column.
+- **Programmes:** 129 of the 139 arrive. The other 10 are left out until the team fixes their URL cell; each one is listed in the sync report.
+- **Notes:** the report also lists 12 notes (10 LinkedIn cells that aren't LinkedIn links, and 2 alumni who filled in the form twice). Those rows are in the guide, so the notes don't count as errors.
+- **Still to do:** the team fixes those 10 URL cells, the add-programme skill is extended, and the live project gets the sync with its own secret (`npm run deploy:live`, then the "Later: the live project" steps in `apps-script/README.md`).
 
 ### Phase 2: Conversation
 - [ ] Login with email link, sent through your own email address or an email service (Supabase's built-in sender is only meant for testing).
