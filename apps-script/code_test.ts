@@ -8,7 +8,11 @@ const SECRET = "a-test-secret-that-is-long-enough-1234567890";
 const TEST_URL = "https://pamkxxyinunskokuquzv.supabase.co/functions/v1/sync";
 const LIVE_URL = "https://utmgdneedxrohyvqhdzy.supabase.co/functions/v1/sync";
 
-type Cell = string | Date;
+// A cell is its text, a date value, or a value that the sheet shows as different text.
+type Shown = { value: Date; shown: string };
+type Cell = string | Date | Shown;
+
+const isShown = (cell: Cell): cell is Shown => typeof cell === "object" && "shown" in cell;
 
 // ---- Made-up sheets ----------------------------------------------------------------------
 
@@ -89,8 +93,9 @@ function makeSheets() {
       CATALOGUE_HEADERS,
       catalogueRow("IDP-01", "test   externship", "Impact Driven Programmes"),
       catalogueRow("SUM-01", "Test Summer School", "Summer School Programmes", {
-        // A date cell: midnight in Amsterdam is still the previous day in UTC.
-        "Next deadline": new Date("2027-03-11T23:00:00Z"),
+        // A date cell. The sheet shows 2027-03-12, but its value is midnight in Amsterdam,
+        // which is still the previous day in UTC: only the shown text is reliable.
+        "Next deadline": { value: new Date("2027-03-11T23:00:00Z"), shown: "2027-03-12" },
         "Deadline status": "Open",
       }),
       catalogueRow("IDP-02", "Nationale Test Training", "Impact Driven Programmes"),
@@ -142,8 +147,9 @@ class FakeSheet {
     }
     if (row > 1) for (let c = 0; c < columns; c++) this.dataColumnsRead.push(column + c);
     return {
-      getValues: () => cells,
-      getDisplayValues: () => cells.map((line) => line.map((cell) => (cell instanceof Date ? cell.toString() : String(cell)))),
+      getValues: () => cells.map((line) => line.map((cell) => (isShown(cell) ? cell.value : cell))),
+      getDisplayValues: () =>
+        cells.map((line) => line.map((cell) => (isShown(cell) ? cell.shown : cell instanceof Date ? cell.toString() : String(cell)))),
     };
   }
 }
@@ -154,7 +160,6 @@ function fakeFile(name: string, tabs: Record<string, Cell[][]>) {
     sheets,
     getName: () => name,
     getSheetByName: (tab: string) => sheets[tab] ?? null,
-    getSpreadsheetTimeZone: () => "Europe/Amsterdam",
   };
 }
 
@@ -180,6 +185,7 @@ function okAnswer(payload: { programmes: unknown[]; alumni: unknown[] }) {
       saved: { programmes: payload.programmes.length, alumni: payload.alumni.length },
       leftOut: { programmes: 0, alumni: 0 },
       problems: [],
+      notes: [],
     },
   };
 }
@@ -239,6 +245,22 @@ function setup(options: { properties?: Record<string, string>; sheets?: ReturnTy
   return { script, files, properties, requests, emails, logs, triggers, sent };
 }
 
+// ---- Reading the report ------------------------------------------------------------------
+
+// The two headings of the report, without the count they start with.
+const PROBLEMS_HEADING = "problems to fix. These rows are left out of the guide until they are fixed:";
+const NOTES_HEADING = "notes. These rows are in the guide, but something is worth fixing:";
+
+// The "- " lines right below a heading of the report.
+function linesUnder(report: string, heading: string): string[] {
+  const lines = report.split("\n");
+  const start = lines.findIndex((line) => line.endsWith(heading));
+  if (start === -1) return [];
+  const below = lines.slice(start + 1);
+  const end = below.findIndex((line) => !line.startsWith("- "));
+  return end === -1 ? below : below.slice(0, end);
+}
+
 // ---- Tests -------------------------------------------------------------------------------
 
 Deno.test("programmes are joined with their catalogue tags on tab and name", () => {
@@ -281,7 +303,7 @@ Deno.test("programmes are joined with their catalogue tags on tab and name", () 
     costsDetails: "Not paid",
     host: "",
   });
-  // The summer school's own column names, and a date cell read in the sheet's time zone.
+  // The summer school's own column names, and a date sent exactly as the sheet shows it.
   assertEquals(programmes[1].host, "Test University");
   assertEquals(programmes[1].signUp, "Applications open in winter");
   assertEquals(programmes[1].nextDeadline, "2027-03-12");
@@ -309,6 +331,31 @@ Deno.test("join problems are reported", () => {
   assertStringIncludes(report, "Read 6 catalogue rows, 5 programmes and 4 alumni form responses.");
 });
 
+Deno.test("the report lists the problems first, then the notes", () => {
+  const note = { where: "Alumni row 16", column: "LinkedIn", message: "is not a link to a LinkedIn profile, so the link is left out." };
+  const { script, logs } = setup({
+    answer: (payload) => {
+      const answer = okAnswer(payload);
+      return { ...answer, body: { ...answer.body, notes: [note] } };
+    },
+  });
+  script.syncNow();
+  const [_dateLine, ...report] = logs[0].split("\n");
+  assertEquals(report, [
+    "Read 6 catalogue rows, 5 programmes and 4 alumni form responses. Sent 4 programmes and 1 alumni with permission.",
+    "",
+    "test: saved 4 programmes and 1 alumni (left out: 0 programmes, 0 alumni).",
+    "",
+    "3 problems to fix. These rows are left out of the guide until they are fixed:",
+    '- Catalogue row 6 (IDP-03, Missing Programme), Programme name: was not found in the tab "Impact Driven Programmes" of the Programmes Database. The names must match.',
+    '- Catalogue row 7 (XXX-01, Test Externship), Source tab: "Old tab" is not one of the tabs: Volunteer work, Youth Organizations, Impact Driven Programmes, Paid Impact Programmes, Summer School Programmes, Programs from other university.',
+    "- Impact Driven Programmes row 5 (Unlisted Programme), Programme Name: has no row in the Catalogue yet, so it is not sent.",
+    "",
+    "1 notes. These rows are in the guide, but something is worth fixing:",
+    "- Alumni row 16, LinkedIn: is not a link to a LinkedIn profile, so the link is left out.",
+  ]);
+});
+
 Deno.test("only alumni with permission are sent, and only someone's newest response counts", () => {
   const { script, sent, logs } = setup();
   script.syncNow();
@@ -324,7 +371,26 @@ Deno.test("only alumni with permission are sent, and only someone's newest respo
     fieldsOfInterest: "Energy",
     linkedin: "https://www.linkedin.com/in/test",
   }]);
-  assertStringIncludes(logs.join("\n"), "Alumni rows 4, 5, Full name: look like the same person. Only the newest response (row 5) is used.");
+  // The newest response says no: that wish is respected, and there is nothing to report.
+  assertFalse(logs.join("\n").includes("Alumni rows 4, 5"));
+});
+
+Deno.test("someone who filled in the form twice and now says yes is a note, not a problem", () => {
+  const sheets = sheetsWithoutProblems();
+  sheets.alumni = [
+    ALUMNI_HEADERS,
+    alumniRow("2026-09-04T11:00:00Z", "Test Alumnus", "No", "+31 6 11112222", "test.alumnus@example.org"),
+    alumniRow("2026-10-01T12:00:00Z", "test alumnus", "Yes, I give permission", "+31 6 11112222", "test.alumnus@example.org"),
+  ];
+  const { script, emails, logs, sent } = setup({ sheets });
+  script.syncOnSchedule();
+  assertEquals(sent().alumni.map((alumnus: { row: number }) => alumnus.row), [3], "the newest response is sent");
+  assertEquals(linesUnder(logs[0], NOTES_HEADING), [
+    "- Alumni rows 2, 3, Full name: look like the same person. Only the newest response (row 3) is used. " +
+    "Delete the older one, or make the names different if they are two people.",
+  ]);
+  assertFalse(logs[0].includes(PROBLEMS_HEADING));
+  assertEquals(emails, [], "nobody is left out, so no email is sent");
 });
 
 Deno.test("the phone, email and contact preference columns are never read or sent", () => {
@@ -413,7 +479,11 @@ Deno.test("the report lists the guide's problems once, and a failure makes the r
 
 Deno.test("the hourly sync emails new problems once, and again only when they change", () => {
   const first = { where: "Catalogue row 2 (IDP-01, Test Externship)", column: "Costs", message: '"Gratis" is not allowed.' };
-  const second = { where: "Alumni row 2", column: "LinkedIn", message: "is not a link to a LinkedIn profile." };
+  const second = {
+    where: "Alumni row 2",
+    column: "Current occupation",
+    message: "looks like it contains an email address or phone number. Remove it from the sheet.",
+  };
   let guideProblems: unknown[] = [];
   const { script, emails, properties } = setup({
     sheets: sheetsWithoutProblems(),
@@ -442,6 +512,44 @@ Deno.test("the hourly sync emails new problems once, and again only when they ch
   script.syncOnSchedule();
   assertEquals(emails.length, 2);
   assertEquals(properties.get("LAST_EMAILED_REPORT"), undefined, "a problem that comes back is emailed again");
+});
+
+Deno.test("the guide's notes are in the report, but notes alone never send an email", () => {
+  const note = { where: "Alumni row 16", column: "LinkedIn", message: "is not a link to a LinkedIn profile, so the link is left out." };
+  const problem = { where: "Catalogue row 2 (IDP-01, Test Externship)", column: "Costs", message: '"Gratis" is not allowed.' };
+  let guideProblems: unknown[] = [];
+  let guideNotes: unknown[] = [note];
+  const { script, emails, logs } = setup({
+    properties: { SYNC_SECRET_TEST: SECRET, SYNC_SECRET_LIVE: SECRET },
+    sheets: sheetsWithoutProblems(),
+    answer: (payload) => {
+      const answer = okAnswer(payload);
+      return { ...answer, body: { ...answer.body, problems: guideProblems, notes: guideNotes } };
+    },
+  });
+
+  script.syncOnSchedule();
+  assertStringIncludes(logs[0], "\n1 " + NOTES_HEADING);
+  assertEquals(
+    linesUnder(logs[0], NOTES_HEADING),
+    ["- Alumni row 16, LinkedIn: is not a link to a LinkedIn profile, so the link is left out."],
+    "listed once, although test and live both report it",
+  );
+  assertFalse(logs[0].includes(PROBLEMS_HEADING));
+  assertFalse(logs[0].includes("No problems found."));
+  assertEquals(emails.length, 0, "notes alone send no email");
+
+  // When rows are left out, the email lists the notes too.
+  guideProblems = [problem];
+  script.syncOnSchedule();
+  assertEquals(emails.length, 1);
+  assertEquals(emails[0].subject, "Impact Connect sync: 1 problems to fix");
+  assertEquals(linesUnder(emails[0].body, NOTES_HEADING).length, 1);
+
+  // Notes that change while the problems stay the same don't send a new email.
+  guideNotes = [];
+  script.syncOnSchedule();
+  assertEquals(emails.length, 1);
 });
 
 Deno.test("a scheduled run that cannot read the sheets sends an email instead of failing silently", () => {

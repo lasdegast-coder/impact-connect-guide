@@ -86,6 +86,7 @@ Deno.test("correct rows are saved and the report has no problems", async () => {
     saved: { programmes: 2, alumni: 1 },
     leftOut: { programmes: 0, alumni: 0 },
     problems: [],
+    notes: [],
   });
   assertEquals(saved.length, 1);
   assertEquals(saved[0].programmes.map((row) => row.id), ["IDP-01", "IDP-02"]);
@@ -107,6 +108,20 @@ Deno.test("rows with problems are left out and reported; the others are saved", 
   ]);
   assertEquals(saved[0].programmes.map((row) => row.id), ["IDP-01"]);
   assertEquals(saved[0].alumni.length, 1);
+});
+
+Deno.test("an alumnus with a wrong LinkedIn cell is saved without the link, with a note", async () => {
+  const { saved, send } = setup();
+  const response = await send({ programmes: [programme()], alumni: [alumnus({ linkedin: "see my profile" })] });
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.leftOut, { programmes: 0, alumni: 0 });
+  assertEquals(body.problems, []);
+  assertEquals(body.notes.map((note: { where: string; column: string }) => `${note.where}, ${note.column}`), [
+    "Alumni row 2, LinkedIn",
+  ]);
+  assertFalse(JSON.stringify(body).includes("see my profile"));
+  assertEquals(saved[0].alumni[0].linkedin_url, null);
 });
 
 Deno.test("when saving fails, the answer says so and still lists the problems", async () => {

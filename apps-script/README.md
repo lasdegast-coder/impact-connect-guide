@@ -1,6 +1,6 @@
 # Data sync: Google Sheets → student guide
 
-`Code.js` is an Apps Script that runs in Impact Connect's Google account. Every hour it sends programmes, catalogue tags and alumni who gave permission to the student guide. The guide's sync function checks every value and saves the rows that are correct. You get an email when there is something to fix.
+`Code.js` is an Apps Script that runs in Impact Connect's Google account. Every hour it sends programmes, catalogue tags and alumni who gave permission to the student guide. The guide's sync function checks every value and saves the rows that are correct. You get an email when the sync fails or rows are left out.
 
 ## What it sends, and what it never sends
 
@@ -12,7 +12,8 @@
 
 How the script decides:
 - **Programmes:** a programme is sent when its catalogue row has the same source tab and programme name as a row in the Programmes Database. Capitals and extra spaces don't matter.
-- **Alumni:** only alumni who answered "Yes, I give permission" are sent. If someone filled in the form more than once, only their newest response counts. A newer "no" therefore removes them from the guide.
+- **Alumni:** only alumni who answered "Yes, I give permission" are sent. If someone filled in the form more than once (with the same full name), only their newest response counts. A newer "no" therefore removes them from the guide. If the newest response says yes, the report lists the responses as a note, so you can delete the older one.
+- **LinkedIn:** if the LinkedIn cell isn't a link to a LinkedIn profile, the link is left out, but the alumnus is still sent. Students reach alumni through Impact Connect, not via LinkedIn. The report lists this as a note.
 - **Phone and email columns:** the script only reads the columns listed above, one column at a time, so it never reads these two. The guide refuses any request that contains them, and its database refuses any text that looks like an email address or phone number.
 
 ## Install (once, about 20 minutes)
@@ -61,20 +62,27 @@ Don't paste it into the chat.
    3. Google lists what the script may do:
       - **Google Sheets:** Google asks for full access, but the script only reads. A test checks that the code contains no instruction that changes a sheet.
       - **Connect to an external service:** sends the data to the guide.
-      - **Send email as you:** only the problem report, to yourself.
+      - **Send email as you:** only the report, to yourself, when the sync fails or rows are left out.
       - **Run when you're not present:** for the hourly sync.
    4. Click **Allow**.
 4. The **Execution log** at the bottom shows the report. For example:
 
    ```
    Impact Connect sync, 2026-11-10 14:05
-   Read 139 catalogue rows, 139 programmes and 63 alumni form responses. Sent 139 programmes and 63 alumni with permission.
+   Read 139 catalogue rows, 139 programmes and 63 alumni form responses. Sent 139 programmes and 61 alumni with permission.
 
-   test: saved 130 programmes and 63 alumni (left out: 9 programmes, 0 alumni).
+   test: saved 129 programmes and 61 alumni (left out: 10 programmes, 0 alumni).
 
-   9 problems to fix in the sheets. Rows with a problem are left out until it is fixed:
+   10 problems to fix. These rows are left out of the guide until they are fixed:
    - Impact Driven Programmes row 2 (IDP-01, Externship), URL: "https://www.extern.com/externships & https://..." should be one web address without spaces or other text, or an empty cell.
+   - ...
+
+   2 notes. These rows are in the guide, but something is worth fixing:
+   - Alumni row 16, LinkedIn: is not a link to a LinkedIn profile, so the link is left out.
+   - Alumni rows 10, 61, Full name: look like the same person. Only the newest response (row 61) is used. Delete the older one, or make the names different if they are two people.
    ```
+
+   **Problems** are rows that are left out of the guide until you fix them. **Notes** are rows that are in the guide, but have something worth fixing when it suits you.
 
 5. Fix the problems in the sheets and click **Run** again. Each line names the sheet, the row and the column. For alumni, the report never repeats what someone wrote.
 
@@ -82,7 +90,7 @@ Don't paste it into the chat.
 
 When the first run worked, choose **`startHourlySync`** and click **Run** (once). From then on:
 - the sync runs every hour, so edits in the sheets reach the guide within an hour;
-- you get an email when the sync fails or finds problems. The same list of problems is emailed only once.
+- you get an email when the sync fails or rows are left out (problems). Notes alone don't send an email; when an email does go out, it lists them too. The same list of problems is emailed only once.
 
 To stop it, run **`stopHourlySync`**.
 

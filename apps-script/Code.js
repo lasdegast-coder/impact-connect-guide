@@ -3,7 +3,8 @@
  *
  * Sends the programmes (the Programmes Database joined with the tags in the Catalogue) and the
  * alumni who gave permission to the student guide. The guide's sync function checks every value
- * again and answers with a report of problems.
+ * again and answers with a report of problems (rows left out until they are fixed) and notes
+ * (rows that are saved, but have something worth fixing).
  *
  * - This script only reads the three Google Sheets below, and only the columns listed here.
  * - It never reads or sends alumni phone numbers or email addresses.
@@ -48,7 +49,7 @@ const ENVIRONMENTS = [
 ];
 
 // The only columns this script reads. Headers are matched ignoring capitals and extra spaces.
-// "raw" columns are read as values (dates) instead of the text shown in the sheet.
+// "raw" columns are read as values (a date and time) instead of the text shown in the sheet.
 const CATALOGUE_COLUMNS = {
   id: { header: 'ID', required: true },
   name: { header: 'Programme name', required: true },
@@ -65,7 +66,8 @@ const CATALOGUE_COLUMNS = {
   language: { header: 'Language', required: true },
   location: { header: 'Location', required: true },
   deadlineStatus: { header: 'Deadline status', required: true },
-  nextDeadline: { header: 'Next deadline', required: true, raw: true },
+  // Read exactly as shown (2026-11-16). Reading the date value would shift it by the time zone.
+  nextDeadline: { header: 'Next deadline', required: true },
   goodFitFor: { header: 'Good fit for', required: true },
 };
 
@@ -134,7 +136,7 @@ function syncOnSchedule() {
   try {
     outcome = runSync_();
   } catch (error) {
-    outcome = { failed: true, problems: [], report: 'The sync could not run: ' + error.message };
+    outcome = { failed: true, problems: [], notes: [], report: 'The sync could not run: ' + error.message };
   }
   console.log(outcome.report);
   emailIfNew_(outcome);
@@ -161,7 +163,6 @@ function readSheets_() {
   return {
     programmeTabs: programmeTabs,
     catalogue: readColumns_(catalogueFile, CATALOGUE_TAB, CATALOGUE_COLUMNS),
-    catalogueTimeZone: catalogueFile.getSpreadsheetTimeZone(),
     alumni: readColumns_(alumniFile, ALUMNI_TAB, ALUMNI_COLUMNS),
   };
 }
@@ -209,13 +210,14 @@ function readColumns_(file, tabName, columns) {
 }
 
 // Joins programmes with their catalogue tags and picks the alumni to send.
-// Returns what to send, the problems found here, and counts for the report.
+// Returns what to send, the problems and notes found here, and counts for the report.
 function collectData_(sheets) {
-  const programmes = joinProgrammes_(sheets.programmeTabs, sheets.catalogue, sheets.catalogueTimeZone);
+  const programmes = joinProgrammes_(sheets.programmeTabs, sheets.catalogue);
   const alumni = selectAlumni_(sheets.alumni);
   return {
     payload: { programmes: programmes.records, alumni: alumni.records },
     problems: programmes.problems.concat(alumni.problems),
+    notes: alumni.notes,
     counts: {
       catalogueRows: programmes.catalogueRows,
       sourceRows: programmes.sourceRows,
@@ -227,7 +229,7 @@ function collectData_(sheets) {
 
 // Each catalogue row is matched with the row of the same name in its source tab
 // (ignoring capitals and extra spaces). Only matched programmes are sent.
-function joinProgrammes_(programmeTabs, catalogueRows, timeZone) {
+function joinProgrammes_(programmeTabs, catalogueRows) {
   const problems = [];
   const sourceIndex = {};
   let sourceRows = 0;
@@ -286,7 +288,7 @@ function joinProgrammes_(programmeTabs, catalogueRows, timeZone) {
         ' point to the same programme.'));
       return;
     }
-    records.push(programmeRecord_(match.catalogue, match.source, match.tab, timeZone));
+    records.push(programmeRecord_(match.catalogue, match.source, match.tab));
   });
 
   PROGRAMME_TABS.forEach((tab) => {
@@ -304,7 +306,7 @@ function joinProgrammes_(programmeTabs, catalogueRows, timeZone) {
 }
 
 // What is sent for one programme: tags from the catalogue, details from the Programmes Database.
-function programmeRecord_(catalogue, source, tab, timeZone) {
+function programmeRecord_(catalogue, source, tab) {
   return {
     catalogueRow: catalogue.rowNumber,
     sourceRow: source.rowNumber,
@@ -322,7 +324,7 @@ function programmeRecord_(catalogue, source, tab, timeZone) {
     language: text_(catalogue.language),
     location: text_(catalogue.location),
     deadlineStatus: text_(catalogue.deadlineStatus),
-    nextDeadline: dateText_(catalogue.nextDeadline, timeZone),
+    nextDeadline: text_(catalogue.nextDeadline),
     goodFitFor: text_(catalogue.goodFitFor),
     name: text_(source.name),
     description: text_(source.description),
@@ -338,9 +340,12 @@ function programmeRecord_(catalogue, source, tab, timeZone) {
 }
 
 // Only alumni who gave permission are sent. When someone filled in the form more than once
-// (same name), only their newest response counts: if that one says no, nothing is sent for them.
+// (same name), only their newest response counts: if that one says no, nothing is sent for them
+// and nothing is reported. If it says yes, the report lists the responses as a note, so the team
+// can delete the older one (or tell two people with the same name apart).
 function selectAlumni_(rows) {
   const problems = [];
+  const notes = [];
   const responsesByName = {};
   let responses = 0;
 
@@ -361,19 +366,19 @@ function selectAlumni_(rows) {
   Object.keys(responsesByName).forEach((name) => {
     const personResponses = responsesByName[name];
     const newest = personResponses.reduce((a, b) => (responseTime_(b) >= responseTime_(a) ? b : a));
-    if (personResponses.length > 1) {
-      problems.push(problem_(
-        'Alumni rows ' + personResponses.map((row) => row.rowNumber).join(', '),
-        'Full name',
-        'look like the same person. Only the newest response (row ' + newest.rowNumber + ') is used. ' +
-          'Delete the older one, or make the names different if they are two people.'
-      ));
-    }
     if (!hasPermission_(newest)) return;
     if (responseTime_(newest) === Infinity) {
       problems.push(problem_('Alumni row ' + newest.rowNumber, 'Tijdstempel',
         'is empty or not a date, so this alumnus is not sent.'));
       return;
+    }
+    if (personResponses.length > 1) {
+      notes.push(problem_(
+        'Alumni rows ' + personResponses.map((row) => row.rowNumber).join(', '),
+        'Full name',
+        'look like the same person. Only the newest response (row ' + newest.rowNumber + ') is used. ' +
+          'Delete the older one, or make the names different if they are two people.'
+      ));
     }
     records.push({
       row: newest.rowNumber,
@@ -389,7 +394,7 @@ function selectAlumni_(rows) {
     });
   });
   records.sort((a, b) => a.row - b.row);
-  return { records: records, problems: problems, responses: responses, withPermission: records.length };
+  return { records: records, problems: problems, notes: notes, responses: responses, withPermission: records.length };
 }
 
 // When a response was given. A response without a valid date counts as the newest, so that a
@@ -443,7 +448,9 @@ function sendTo_(target, payload) {
   }
 }
 
-// Turns everything into one readable report.
+// Turns everything into one readable report. Problems are rows left out of the guide until they
+// are fixed; notes are rows that are in the guide, but have something worth fixing. Each problem
+// and note is listed once, even when the script and both environments find it.
 function summarise_(data, results) {
   const counts = data.counts;
   const lines = [
@@ -454,9 +461,10 @@ function summarise_(data, results) {
     '',
   ];
 
-  const problems = data.problems.slice();
-  const seen = {};
-  problems.forEach((item) => { seen[problemText_(item)] = true; });
+  const problems = [];
+  const notes = [];
+  addNew_(problems, data.problems);
+  addNew_(notes, data.notes);
   let failed = false;
   results.forEach((result) => {
     const body = result.body || {};
@@ -468,26 +476,29 @@ function summarise_(data, results) {
       failed = true;
       lines.push(result.environment + ': FAILED. ' + (body.error || 'No answer.'));
     }
-    (body.problems || []).forEach((item) => {
-      const key = problemText_(item);
-      if (!seen[key]) {
-        seen[key] = true;
-        problems.push(item);
-      }
-    });
+    addNew_(problems, body.problems);
+    addNew_(notes, body.notes);
   });
 
   lines.push('');
-  if (problems.length === 0) {
+  if (problems.length === 0 && notes.length === 0) {
     lines.push('No problems found.');
-  } else {
-    lines.push(problems.length + ' problems to fix in the sheets. Rows with a problem are left out until it is fixed:');
+  }
+  if (problems.length > 0) {
+    lines.push(problems.length + ' problems to fix. These rows are left out of the guide until they are fixed:');
     problems.forEach((item) => lines.push('- ' + problemText_(item)));
   }
-  return { failed: failed, problems: problems, report: lines.join('\n') };
+  if (notes.length > 0) {
+    if (problems.length > 0) lines.push('');
+    lines.push(notes.length + ' notes. These rows are in the guide, but something is worth fixing:');
+    notes.forEach((item) => lines.push('- ' + problemText_(item)));
+  }
+  return { failed: failed, problems: problems, notes: notes, report: lines.join('\n') };
 }
 
-// Sends the report by email when it needs attention and is different from the last one sent.
+// Emails the report when the run failed or rows are left out (problems), unless the same failure
+// and problems were emailed last time. Notes never send an email on their own: they are only
+// part of the report.
 function emailIfNew_(outcome) {
   const properties = PropertiesService.getScriptProperties();
   const needsAttention = outcome.failed || outcome.problems.length > 0;
@@ -509,6 +520,7 @@ function emailIfNew_(outcome) {
 
 // ---- Small helpers -----------------------------------------------------------------------
 
+// One line of the report, a problem or a note: which row, which column, and what is wrong.
 function problem_(where, column, message) {
   return { where: where, column: column, message: message };
 }
@@ -517,17 +529,20 @@ function problemText_(item) {
   return item.where + ', ' + item.column + ': ' + item.message;
 }
 
+// Adds each item to the list, unless the list already has an item with the same text.
+function addNew_(list, items) {
+  (items || []).forEach((item) => {
+    const text = problemText_(item);
+    if (!list.some((existing) => problemText_(existing) === text)) list.push(item);
+  });
+}
+
 function text_(value) {
   return value === null || value === undefined ? '' : String(value).trim();
 }
 
 function normalise_(value) {
   return String(value).replace(/\s+/g, ' ').trim().toLowerCase();
-}
-
-function dateText_(value, timeZone) {
-  if (value instanceof Date) return Utilities.formatDate(value, timeZone, 'yyyy-MM-dd');
-  return text_(value);
 }
 
 function isEmptyRow_(row) {

@@ -193,13 +193,31 @@ Deno.test("an alumnus with permission becomes a database row, without tracking p
   }]);
 });
 
-Deno.test("a LinkedIn link without https:// is completed; anything else is refused", () => {
-  const ok = check([programme()], [alumnus({ linkedin: "nl.linkedin.com/in/test" })]);
-  assertEquals(ok.alumni[0].linkedin_url, "https://nl.linkedin.com/in/test");
+Deno.test("a dash means empty, also for LinkedIn", () => {
+  const result = check([programme()], [alumnus({ linkedin: "-", master: "–" })]);
+  assertEquals(result.problems, []);
+  assertEquals(result.alumni[0].linkedin_url, null);
+  assertEquals(result.alumni[0].master, null);
+});
+
+Deno.test("a LinkedIn link without https:// is completed", () => {
+  const result = check([programme()], [alumnus({ linkedin: "nl.linkedin.com/in/test" })]);
+  assertEquals(result.alumni[0].linkedin_url, "https://nl.linkedin.com/in/test");
+  assertEquals(result.notes, []);
+});
+
+Deno.test("anything else in the LinkedIn cell is left out, the alumnus is still saved, and a note says so", () => {
   for (const linkedin of ["Test Alumna", "https://www.example.org/in/test", "@test", "https://linkedin.com.evil.org/in/x"]) {
     const result = check([programme()], [alumnus({ linkedin })]);
-    assertEquals(result.alumni, [], linkedin);
-    assertEquals(result.problems[0].column, "LinkedIn");
+    assertEquals(result.problems, [], linkedin);
+    assertEquals(result.alumni.length, 1, linkedin);
+    assertEquals(result.alumni[0].linkedin_url, null, linkedin);
+    assertEquals(result.notes, [{
+      where: "Alumni row 2",
+      column: "LinkedIn",
+      message: "is not a link to a LinkedIn profile, so the link is left out.",
+    }]);
+    assertFalse(JSON.stringify([result.problems, result.notes]).includes(linkedin), "the report never repeats the value");
   }
 });
 
@@ -227,14 +245,15 @@ Deno.test("an email address or phone number in any alumni field leaves the alumn
   }
 });
 
-Deno.test("alumni problems never quote what the alumnus wrote", () => {
+Deno.test("alumni problems and notes never quote what the alumnus wrote", () => {
   const result = check([programme()], [
     alumnus({ fullName: "", currentOccupation: "x".repeat(301), linkedin: "Secret Value 123" }),
   ]);
   assertEquals(result.alumni, []);
-  assertEquals(result.problems.length, 3);
-  assertFalse(JSON.stringify(result.problems).includes("Secret Value"));
-  assertFalse(JSON.stringify(result.problems).includes("xxx"));
+  assertEquals(result.problems.map((problem) => problem.column), ["Full name", "Current occupation"]);
+  assertEquals(result.notes.map((note) => note.column), ["LinkedIn"]);
+  assertFalse(JSON.stringify(result).includes("Secret Value"));
+  assertFalse(JSON.stringify(result).includes("xxx"));
 });
 
 Deno.test("a missing form timestamp or a duplicate one leaves the alumnus out", () => {
