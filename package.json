@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check:functions": "deno check supabase/functions/*/index.ts",
-    "test:functions": "deno test --allow-env --allow-read=apps-script supabase/functions apps-script",
+    "test:functions": "deno test --allow-env --allow-read=apps-script,skills supabase/functions apps-script skills",
     "deploy:test": "node scripts/deploy.mjs test",
     "deploy:live": "node scripts/deploy.mjs live",
     "db:new": "supabase migration new"
